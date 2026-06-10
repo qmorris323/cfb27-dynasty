@@ -494,17 +494,22 @@ export default function App() {
     const loadData = async () => {
       setSyncing(true);
       try {
-        const [{ data: playersData }, { data: alumniData }, { data: programData }, { data: metaData }] = await Promise.all([
-          supabase.from("players").select("*").eq("user_id", user.id),
-          supabase.from("alumni").select("*").eq("user_id", user.id),
-          supabase.from("program").select("*").eq("user_id", user.id).single(),
-          supabase.from("meta").select("*").eq("user_id", user.id).single(),
-        ]);
+        const { data: playersData, error: pe } = await supabase.from("players").select("*").eq("user_id", user.id);
+        if (pe) throw new Error("Load players: " + pe.message);
+        const { data: alumniData, error: ae } = await supabase.from("alumni").select("*").eq("user_id", user.id);
+        if (ae) throw new Error("Load alumni: " + ae.message);
+        const { data: programData, error: pre } = await supabase.from("program").select("*").eq("user_id", user.id).maybeSingle();
+        if (pre) throw new Error("Load program: " + pre.message);
+        const { data: metaData, error: me } = await supabase.from("meta").select("*").eq("user_id", user.id).maybeSingle();
+        if (me) throw new Error("Load meta: " + me.message);
         if (playersData?.length) setRoster(playersData.map(r => r.data));
         if (alumniData?.length) setAlumni(alumniData.map(r => r.data));
         if (programData?.data) setProgram(programData.data);
         if (metaData?.data) { setSeason(metaData.data.season || 1); setTeamName(metaData.data.teamName || "My Dynasty"); }
-      } catch(e) { console.error("Load error", e); }
+      } catch(e) {
+        console.error("Load error", e);
+        setSaveError("Load failed: " + e.message);
+      }
       finally { setSyncing(false); }
     };
     loadData();
