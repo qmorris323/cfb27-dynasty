@@ -517,33 +517,30 @@ export default function App() {
 
   // ── Save to Supabase (debounced) ──────────────────────────────────────────
   const [saveError, setSaveError] = useState("");
-  const saveTimeout = useRef(null);
-  const saveToSupabase = useCallback((newRoster, newAlumni, newProgram, newSeason, newTeamName) => {
+  const saveToSupabase = useCallback(async (newRoster, newAlumni, newProgram, newSeason, newTeamName) => {
     if (!user) return;
-    clearTimeout(saveTimeout.current);
-    saveTimeout.current = setTimeout(async () => {
-      setSyncing(true);
-      try {
-        if (newRoster.length > 0) {
-          const { error: pe } = await supabase.from("players").upsert(newRoster.map(p => ({ id: p.id, user_id: user.id, data: p })));
-          if (pe) throw new Error("Players: " + pe.message);
-        }
-        if (newAlumni.length > 0) {
-          const { error: ae } = await supabase.from("alumni").upsert(newAlumni.map(a => ({ id: `${user.id}_s${a.season}`, user_id: user.id, data: a })));
-          if (ae) throw new Error("Alumni: " + ae.message);
-        }
-        const { error: pre } = await supabase.from("program").upsert({ user_id: user.id, data: newProgram, updated_at: new Date().toISOString() });
-        if (pre) throw new Error("Program: " + pre.message);
-        const { error: me } = await supabase.from("meta").upsert({ user_id: user.id, data: { season: newSeason, teamName: newTeamName }, updated_at: new Date().toISOString() });
-        if (me) throw new Error("Meta: " + me.message);
-        setLastSaved(new Date());
-        setSaveError("");
-      } catch(e) {
-        console.error("Save error", e);
-        setSaveError(e.message);
+    setSyncing(true);
+    setLastSaved(null);
+    try {
+      if (newRoster.length > 0) {
+        const { error: pe } = await supabase.from("players").upsert(newRoster.map(p => ({ id: p.id, user_id: user.id, data: p })));
+        if (pe) throw new Error("Players: " + pe.message);
       }
-      finally { setSyncing(false); }
-    }, 1500);
+      if (newAlumni.length > 0) {
+        const { error: ae } = await supabase.from("alumni").upsert(newAlumni.map(a => ({ id: `${user.id}_s${a.season}`, user_id: user.id, data: a })));
+        if (ae) throw new Error("Alumni: " + ae.message);
+      }
+      const { error: pre } = await supabase.from("program").upsert({ user_id: user.id, data: newProgram, updated_at: new Date().toISOString() });
+      if (pre) throw new Error("Program: " + pre.message);
+      const { error: me } = await supabase.from("meta").upsert({ user_id: user.id, data: { season: newSeason, teamName: newTeamName }, updated_at: new Date().toISOString() });
+      if (me) throw new Error("Meta: " + me.message);
+      setLastSaved(new Date());
+      setSaveError("");
+    } catch(e) {
+      console.error("Save error", e);
+      setSaveError(e.message);
+    }
+    finally { setSyncing(false); }
   }, [user]);
 
   const showFlash = useCallback((msg) => { setFlash(msg); setTimeout(()=>setFlash(""),2500); }, []);
