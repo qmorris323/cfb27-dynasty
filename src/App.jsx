@@ -494,46 +494,53 @@ export default function App() {
     const loadData = async () => {
       setSyncing(true);
       try {
-        const [{ data: playersData }, { data: alumniData }, { data: programData }, { data: metaData }] = await Promise.all([
-          supabase.from("players").select("*").eq("user_id", user.id),
-          supabase.from("alumni").select("*").eq("user_id", user.id),
-          supabase.from("program").select("*").eq("user_id", user.id).single(),
-          supabase.from("meta").select("*").eq("user_id", user.id).single(),
-        ]);
+        const { data: playersData, error: pe } = await supabase.from("players").select("*").eq("user_id", user.id);
+        if (pe) throw new Error("Load players: " + pe.message);
+        const { data: alumniData, error: ae } = await supabase.from("alumni").select("*").eq("user_id", user.id);
+        if (ae) throw new Error("Load alumni: " + ae.message);
+        const { data: programData, error: pre } = await supabase.from("program").select("*").eq("user_id", user.id).maybeSingle();
+        if (pre) throw new Error("Load program: " + pre.message);
+        const { data: metaData, error: me } = await supabase.from("meta").select("*").eq("user_id", user.id).maybeSingle();
+        if (me) throw new Error("Load meta: " + me.message);
         if (playersData?.length) setRoster(playersData.map(r => r.data));
         if (alumniData?.length) setAlumni(alumniData.map(r => r.data));
         if (programData?.data) setProgram(programData.data);
         if (metaData?.data) { setSeason(metaData.data.season || 1); setTeamName(metaData.data.teamName || "My Dynasty"); }
-      } catch(e) { console.error("Load error", e); }
+      } catch(e) {
+        console.error("Load error", e);
+        setSaveError("Load failed: " + e.message);
+      }
       finally { setSyncing(false); }
     };
     loadData();
   }, [user]);
 
   // ── Save to Supabase (debounced) ──────────────────────────────────────────
-  const saveTimeout = useRef(null);
-  const saveToSupabase = useCallback((newRoster, newAlumni, newProgram, newSeason, newTeamName) => {
+  const [saveError, setSaveError] = useState("");
+  const saveToSupabase = useCallback(async (newRoster, newAlumni, newProgram, newSeason, newTeamName) => {
     if (!user) return;
-    clearTimeout(saveTimeout.current);
-    saveTimeout.current = setTimeout(async () => {
-      setSyncing(true);
-      try {
-        // Upsert all players
-        if (newRoster.length > 0) {
-          await supabase.from("players").upsert(newRoster.map(p => ({ id: p.id, user_id: user.id, data: p })));
-        }
-        // Upsert alumni batches
-        if (newAlumni.length > 0) {
-          await supabase.from("alumni").upsert(newAlumni.map(a => ({ id: `${user.id}_s${a.season}`, user_id: user.id, data: a })));
-        }
-        // Upsert program
-        await supabase.from("program").upsert({ user_id: user.id, data: newProgram, updated_at: new Date().toISOString() });
-        // Upsert meta
-        await supabase.from("meta").upsert({ user_id: user.id, data: { season: newSeason, teamName: newTeamName }, updated_at: new Date().toISOString() });
-        setLastSaved(new Date());
-      } catch(e) { console.error("Save error", e); }
-      finally { setSyncing(false); }
-    }, 1500);
+    setSyncing(true);
+    setLastSaved(null);
+    try {
+      if (newRoster.length > 0) {
+        const { error: pe } = await supabase.from("players").upsert(newRoster.map(p => ({ id: p.id, user_id: user.id, data: p })));
+        if (pe) throw new Error("Players: " + pe.message);
+      }
+      if (newAlumni.length > 0) {
+        const { error: ae } = await supabase.from("alumni").upsert(newAlumni.map(a => ({ id: `${user.id}_s${a.season}`, user_id: user.id, data: a })));
+        if (ae) throw new Error("Alumni: " + ae.message);
+      }
+      const { error: pre } = await supabase.from("program").upsert({ user_id: user.id, data: newProgram, updated_at: new Date().toISOString() });
+      if (pre) throw new Error("Program: " + pre.message);
+      const { error: me } = await supabase.from("meta").upsert({ user_id: user.id, data: { season: newSeason, teamName: newTeamName }, updated_at: new Date().toISOString() });
+      if (me) throw new Error("Meta: " + me.message);
+      setLastSaved(new Date());
+      setSaveError("");
+    } catch(e) {
+      console.error("Save error", e);
+      setSaveError(e.message);
+    }
+    finally { setSyncing(false); }
   }, [user]);
 
   const showFlash = useCallback((msg) => { setFlash(msg); setTimeout(()=>setFlash(""),2500); }, []);
@@ -646,7 +653,8 @@ export default function App() {
           }
           <span style={{ marginLeft:10, fontSize:11, color:"#64748b" }}>Season {season} · CFB 27</span>
           {syncing&&<span style={{ marginLeft:8, fontSize:10, color:"#475569" }}>saving…</span>}
-          {!syncing&&lastSaved&&<span style={{ marginLeft:8, fontSize:10, color:"#1e3a5f" }}>✓ synced</span>}
+          {!syncing&&lastSaved&&!saveError&&<span style={{ marginLeft:8, fontSize:10, color:"#10b981" }}>✓ synced</span>}
+          {saveError&&<span style={{ marginLeft:8, fontSize:11, color:"#ef4444", fontWeight:600 }}>⚠ Save failed: {saveError}</span>}
         </div>
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
           {TABS.map(([t,lbl])=>(
