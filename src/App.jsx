@@ -591,6 +591,9 @@ export default function App() {
       setSaveError("");
     } catch(e) {
       console.error("Save error", e);
+      setSaveError(e.message);
+    }
+    finally { setSyncing(false); }
   }, [user, tabOrder]);
 
   const showFlash = useCallback((msg) => { setFlash(msg); setTimeout(()=>setFlash(""),2500); }, []);
