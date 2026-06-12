@@ -9,7 +9,8 @@ const DEV_TRAITS = ["Elite","Star","Impact","Normal"];
 const STAR_LEVELS = ["5 Star","4 Star","3 Star","2 Star","1 Star"];
 const GEM_BUST = ["Normal","GEM","Bust"];
 const ORIGINS = ["Recruit","Transfer","Walk On","Original"];
-const DEALBREAKERS = ["A","B+","B","C+","C","D+","D"];
+const DEALBREAKERS = ["A","A-","B+","B","B-","C+","C","C-","D+","D","D-"];
+const DEALBREAKER_CATEGORIES = ["Playing Style","Playing Time","Coach Prestige","Conference Prestige","Pro Potential","Loyalty","Tradition","Athletic Facilities","Academic Prestige","Brand Exposure","Stability"];
 const SPEND_CATEGORIES = ["NIL","Facilities","Staff","Equipment","Other"];
 const AD_STATUSES = ["On Track","At Risk","Met","Failed"];
 const ARCHETYPES = {
@@ -37,7 +38,7 @@ const AD_STATUS_COLOR = { "On Track":"#34d399","At Risk":"#f59e0b","Met":"#60a5f
 const EMPTY_PLAYER = {
   id:null, pos:"QB", name:"", class:"FR", redshirt:false, devTrait:"Normal",
   stars:"4 Star", gemBust:"Normal", baseOVR:"", ovr:"", arch:"", skillCaps:"",
-  origin:"Recruit", nilDeal:"", nilDemand:"", dealbreaker:"", portalRisk:false,
+  origin:"Recruit", nilDeal:"", nilDemand:"", dealbreaker:"", dealbreakerCategory:"", portalRisk:false,
   draftRisk:false, startingOVR:"", notes:""
 };
 
@@ -184,7 +185,7 @@ function PlayerForm({ initial, onSave, onCancel }) {
           ["Dev Trait","devTrait","sel",DEV_TRAITS],["Stars","stars","sel",STAR_LEVELS],["GEM/Bust","gemBust","sel",GEM_BUST],
           ["Archetype","arch","sel",ARCHETYPES[p.pos]||[]],["Origin","origin","sel",ORIGINS],
           ["Baseline OVR","baseOVR","num"],["Current OVR","ovr","num"],["Starting OVR","startingOVR","num"],
-          ["Skill Caps","skillCaps","num"],["Dealbreaker","dealbreaker","sel",DEALBREAKERS],
+          ["Skill Caps","skillCaps","num"],["Dealbreaker Grade","dealbreaker","sel",DEALBREAKERS],["Dealbreaker Category","dealbreakerCategory","sel",DEALBREAKER_CATEGORIES],
         ].map(([lbl,key,type,opts])=>(
           <div key={key}>
             <label style={{ fontSize:11, color:"#64748b", display:"block", marginBottom:3 }}>{lbl}</label>
@@ -375,13 +376,15 @@ IMPORTANT — OVR has TWO distinct values you must capture separately:
 - "startingOVR" should equal "baseOVR" (same value) since this is a fresh roster entry — the user can edit startingOVR later if needed.
 - Ignore arrow colors/styling themselves; just read the numeric values as displayed in each location.
 
+IMPORTANT — Dealbreaker fields: A player's expanded profile/details may show a "Dealbreaker" section with a letter grade (A, A-, B+, B, B-, C+, C, C-, D+, D, D-) AND a category label describing WHAT the dealbreaker is about (e.g. "Playing Style", "Playing Time", "Coach Prestige", "Conference Prestige", "Pro Potential", "Loyalty", "Tradition", "Athletic Facilities", "Academic Prestige", "Brand Exposure", "Stability"). Extract the letter grade as "dealbreaker" and the category label as "dealbreakerCategory" (use the exact text shown, or your best match to the list above). Leave both empty if not visible.
+
 For phone photos: work through glare, angles, moiré patterns. Make best inference for partially visible values.
 
 Dev Trait: X-Factor=Elite, Superstar=Star, Impact=Impact, Normal=Normal
 If same player appears in multiple images, merge data — profile card values take priority.
 
 Return ONLY a valid JSON array, nothing else, no markdown:
-[{"pos":"QB","name":"Player Name","class":"JR","ovr":"87","devTrait":"Star","stars":"4 Star","arch":"Pocket Passer","gemBust":"Normal","origin":"Recruit","redshirt":"false","baseOVR":"87","startingOVR":"87","skillCaps":"","nilDeal":"","nilDemand":"","dealbreaker":"","portalRisk":"false","draftRisk":"false","notes":""}]`;
+[{"pos":"QB","name":"Player Name","class":"JR","ovr":"87","devTrait":"Star","stars":"4 Star","arch":"Pocket Passer","gemBust":"Normal","origin":"Recruit","redshirt":"false","baseOVR":"87","startingOVR":"87","skillCaps":"","nilDeal":"","nilDemand":"","dealbreaker":"","dealbreakerCategory":"","portalRisk":"false","draftRisk":"false","notes":""}]`;
 
       const response = await fetch("/api/scan", {
         method:"POST",
@@ -395,7 +398,7 @@ Return ONLY a valid JSON array, nothing else, no markdown:
       const jsonMatch = raw.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error("Could not parse response: "+raw.slice(0,200));
       const players = JSON.parse(jsonMatch[0]);
-      const mapped = players.map(p=>({ id:uid(), pos:p.pos||"QB", name:p.name||"", class:p.class||"FR", redshirt:p.redshirt==="true", devTrait:p.devTrait||"Normal", stars:p.stars||"4 Star", gemBust:p.gemBust||"Normal", baseOVR:p.baseOVR||p.ovr||"", ovr:p.ovr||"", arch:p.arch||"", skillCaps:"", origin:p.origin||"Recruit", nilDeal:"", nilDemand:"", dealbreaker:"", portalRisk:false, draftRisk:false, startingOVR:p.startingOVR||p.baseOVR||p.ovr||"", notes:"" }));
+      const mapped = players.map(p=>({ id:uid(), pos:p.pos||"QB", name:p.name||"", class:p.class||"FR", redshirt:p.redshirt==="true", devTrait:p.devTrait||"Normal", stars:p.stars||"4 Star", gemBust:p.gemBust||"Normal", baseOVR:p.baseOVR||p.ovr||"", ovr:p.ovr||"", arch:p.arch||"", skillCaps:"", origin:p.origin||"Recruit", nilDeal:"", nilDemand:"", dealbreaker:p.dealbreaker||"", dealbreakerCategory:p.dealbreakerCategory||"", portalRisk:false, draftRisk:false, startingOVR:p.startingOVR||p.baseOVR||p.ovr||"", notes:"" }));
       setScanned(mapped);
       const sel={}; mapped.forEach(p=>{sel[p.id]=true;}); setSelected(sel); setConfirmed({});
     } catch(err) { setError("Scan failed: "+(err.message||"Unknown error")); }
@@ -588,8 +591,7 @@ export default function App() {
       setSaveError("");
     } catch(e) {
       console.error("Save error", e);
-  }
-}, [user, tabOrder]);
+  }, [user, tabOrder]);
 
   const showFlash = useCallback((msg) => { setFlash(msg); setTimeout(()=>setFlash(""),2500); }, []);
 
@@ -653,8 +655,8 @@ export default function App() {
   }, [roster, alumni, program, season, teamName, saveToSupabase]);
 
   const exportCSV = useCallback(() => {
-    const hdrs=["Pos","Name","Class","Redshirt","Dev Trait","Stars","GEM/Bust","Baseline OVR","OVR","OVR Change","Archetype","Skill Caps","Origin","NIL Deal","NIL Demand","Dealbreaker","Portal Risk","Draft Risk","Starting OVR","Notes"];
-    const rows=roster.map(p=>[p.pos,p.name,p.class,p.redshirt?"Yes":"",p.devTrait,p.stars,p.gemBust,p.baseOVR,p.ovr,ovrChange(p)??"",p.arch,p.skillCaps,p.origin,p.nilDeal,p.nilDemand,p.dealbreaker,p.portalRisk?"Yes":"",p.draftRisk?"Yes":"",p.startingOVR,p.notes]);
+    const hdrs=["Pos","Name","Class","Redshirt","Dev Trait","Stars","GEM/Bust","Baseline OVR","OVR","OVR Change","Archetype","Skill Caps","Origin","NIL Deal","NIL Demand","Dealbreaker","Dealbreaker Category","Portal Risk","Draft Risk","Starting OVR","Notes"];
+    const rows=roster.map(p=>[p.pos,p.name,p.class,p.redshirt?"Yes":"",p.devTrait,p.stars,p.gemBust,p.baseOVR,p.ovr,ovrChange(p)??"",p.arch,p.skillCaps,p.origin,p.nilDeal,p.nilDemand,p.dealbreaker,p.dealbreakerCategory,p.portalRisk?"Yes":"",p.draftRisk?"Yes":"",p.startingOVR,p.notes]);
     const csv=[hdrs,...rows].map(r=>r.map(c=>`"${String(c??"").replace(/"/g,'""')}"`).join(",")).join("\n");
     const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv"})),download:`CFB27_Season${season}_Roster.csv`}); a.click();
   }, [roster, season]);
@@ -662,7 +664,7 @@ export default function App() {
   const handleImport = useCallback(() => {
     try {
       const lines=importText.trim().split("\n").filter(Boolean);
-      const imported=lines.slice(1).map(line=>{ const c=line.split(",").map(x=>x.replace(/^"|"$/g,"").trim()); return {id:uid(),pos:c[0]||"QB",name:c[1]||"",class:c[2]||"FR",redshirt:c[3]==="Yes",devTrait:c[4]||"Normal",stars:c[5]||"4 Star",gemBust:c[6]||"Normal",baseOVR:c[7]||"",ovr:c[8]||"",arch:c[10]||"",skillCaps:c[11]||"",origin:c[12]||"Recruit",nilDeal:c[13]||"",nilDemand:c[14]||"",dealbreaker:c[15]||"",portalRisk:c[16]==="Yes",draftRisk:c[17]==="Yes",startingOVR:c[18]||"",notes:c[19]||""}; });
+      const imported=lines.slice(1).map(line=>{ const c=line.split(",").map(x=>x.replace(/^"|"$/g,"").trim()); return {id:uid(),pos:c[0]||"QB",name:c[1]||"",class:c[2]||"FR",redshirt:c[3]==="Yes",devTrait:c[4]||"Normal",stars:c[5]||"4 Star",gemBust:c[6]||"Normal",baseOVR:c[7]||"",ovr:c[8]||"",arch:c[10]||"",skillCaps:c[11]||"",origin:c[12]||"Recruit",nilDeal:c[13]||"",nilDemand:c[14]||"",dealbreaker:c[15]||"",dealbreakerCategory:c[16]||"",portalRisk:c[17]==="Yes",draftRisk:c[18]==="Yes",startingOVR:c[19]||"",notes:c[20]||""}; });
       const newRoster = [...roster, ...imported];
       setRoster(newRoster); setImportText(""); setShowImport(false); showFlash(`Imported ${imported.length} players ✓`);
       saveToSupabase(newRoster, alumni, program, season, teamName);
@@ -769,7 +771,7 @@ export default function App() {
           {confirmAdvance&&(<div style={{ background:"#1a0a00", border:"1px solid #92400e", borderRadius:10, padding:16, marginBottom:16 }}><div style={{ fontWeight:700, color:"#fbbf24", marginBottom:6 }}>⚠ Advance to Season {season+1}?</div><div style={{ color:"#94a3b8", fontSize:12, marginBottom:12 }}>Graduates {roster.filter(p=>p.class==="SR").length} seniors, advances all classes, resets flags. Cannot be undone.</div><div style={{ display:"flex", gap:8 }}><button onClick={advanceSeason} style={S.btn("danger")}>Yes, Advance Season</button><button onClick={()=>setConfirmAdvance(false)} style={S.btn("secondary")}>Cancel</button></div></div>)}
           <div style={{ overflowX:"auto", borderRadius:8, border:"1px solid #1e293b" }}>
             <table style={{ width:"100%", borderCollapse:"collapse" }}>
-              <thead><tr style={{ background:"#0a0f1e" }}>{[["pos","Pos"],["name","Name"],["class","Cls"],["devTrait","Dev"],["stars","Stars"],["gemBust","G/B"],["ovr","OVR"],["arch","Arch"],["dealbreaker","DB"],["nilDeal","NIL Deal"],["nilDemand","NIL Dmnd"],["origin","Origin"]].map(([k,lbl])=>(<th key={k} onClick={()=>toggleSort(k)} style={S.th(k)}>{lbl}{sortKey===k?(sortDir==="asc"?" ↑":" ↓"):""}</th>))}<th style={S.th("_f")}>Flags</th><th style={{ ...S.th("_a"), textAlign:"right" }}>Act.</th></tr></thead>
+              <thead><tr style={{ background:"#0a0f1e" }}>{[["pos","Pos"],["name","Name"],["class","Cls"],["devTrait","Dev"],["stars","Stars"],["gemBust","G/B"],["ovr","OVR"],["arch","Arch"],["dealbreaker","DB"],["dealbreakerCategory","DB Cat"],["nilDeal","NIL Deal"],["nilDemand","NIL Dmnd"],["origin","Origin"]].map(([k,lbl])=>(<th key={k} onClick={()=>toggleSort(k)} style={S.th(k)}>{lbl}{sortKey===k?(sortDir==="asc"?" ↑":" ↓"):""}</th>))}<th style={S.th("_f")}>Flags</th><th style={{ ...S.th("_a"), textAlign:"right" }}>Act.</th></tr></thead>
               <tbody>
                 {displayed.map(p=>{ const chg=ovrChange(p); const nilRisk=nilAtRisk(p); return (
                   <tr key={p.id} style={{ background:nilRisk?"#1a0800":"#070c18" }} onMouseEnter={e=>e.currentTarget.style.background=nilRisk?"#220a00":"#0d1526"} onMouseLeave={e=>e.currentTarget.style.background=nilRisk?"#1a0800":"#070c18"}>
@@ -782,6 +784,7 @@ export default function App() {
                     <td style={S.td}><span style={{ fontWeight:700, color:Number(p.ovr)>=90?"#f59e0b":Number(p.ovr)>=85?"#34d399":"#f1f5f9" }}>{p.ovr||"—"}</span>{chg!==null&&<span style={{ fontSize:10, color:chg>0?"#10b981":"#ef4444", marginLeft:3 }}>{chg>0?`+${chg}`:chg}</span>}</td>
                     <td style={{ ...S.td, color:"#94a3b8", maxWidth:110, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.arch||"—"}</td>
                     <td style={S.td}>{p.dealbreaker?<span style={{ fontWeight:600, color:"#a78bfa" }}>{p.dealbreaker}</span>:<span style={{color:"#334155"}}>—</span>}</td>
+                    <td style={{ ...S.td, color:"#94a3b8", fontSize:11 }}>{p.dealbreakerCategory||"—"}</td>
                     <td style={S.td}><span style={{ color:"#34d399", fontWeight:600 }}>{p.nilDeal||"—"}</span></td>
                     <td style={S.td}><span style={{ color:nilRisk?"#ef4444":"#94a3b8", fontWeight:nilRisk?700:400 }}>{p.nilDemand||"—"}{nilRisk&&" ⚠"}</span></td>
                     <td style={S.td}><span style={{ color:p.origin==="Transfer"?"#a78bfa":"#94a3b8" }}>{p.origin}</span></td>
