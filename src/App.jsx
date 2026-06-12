@@ -362,6 +362,13 @@ Screen types:
 - Depth Chart/Roster List: shows multiple players. Extract name, pos, OVR, class. Leave other fields empty.
 - Player Profile Card: shows one player's full details. Extract everything visible including dev trait, stars, archetype, starting OVR, skill caps, dealbreaker, NIL values, portal/draft indicators.
 
+IMPORTANT — Class field format: The YEAR column often shows "JR (RS)", "SR (RS)", "FR (RS)" etc. The "(RS)" suffix means the player is REDSHIRTED.
+- The "class" field must contain ONLY the base class: "FR", "SO", "JR", or "SR" — never include "(RS)" in this field.
+- Set "redshirt" to "true" if "(RS)" appears next to the class, otherwise "false".
+- Example: "JR (RS)" → class:"JR", redshirt:"true". "SR" → class:"SR", redshirt:"false".
+
+IMPORTANT — OVR field: Depth charts sometimes show a small colored arrow (▲ green or ▼ red) next to the OVR number. This arrow indicates a PROJECTED future change, NOT the current rating. Always extract the plain OVR NUMBER itself (ignore the arrow/color) — e.g. if you see "89▲" the ovr value is "89". Do not add or subtract based on the arrow.
+
 For phone photos: work through glare, angles, moiré patterns. Make best inference for partially visible values.
 
 Dev Trait: X-Factor=Elite, Superstar=Star, Impact=Impact, Normal=Normal
