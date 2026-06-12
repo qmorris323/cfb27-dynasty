@@ -367,7 +367,13 @@ IMPORTANT — Class field format: The YEAR column often shows "JR (RS)", "SR (RS
 - Set "redshirt" to "true" if "(RS)" appears next to the class, otherwise "false".
 - Example: "JR (RS)" → class:"JR", redshirt:"true". "SR" → class:"SR", redshirt:"false".
 
-IMPORTANT — OVR field: Depth charts sometimes show a small colored arrow (▲ green or ▼ red) next to the OVR number. This arrow indicates a PROJECTED future change, NOT the current rating. Always extract the plain OVR NUMBER itself (ignore the arrow/color) — e.g. if you see "89▲" the ovr value is "89". Do not add or subtract based on the arrow.
+IMPORTANT — OVR has TWO distinct values you must capture separately:
+- "ovr" (Current OVR): the number shown on the DEPTH CHART/ROSTER LIST row for this player, including any arrow-adjusted/boosted number. This represents their current rating with any active boosts.
+- "baseOVR" (Baseline OVR): the large OVR number shown on the PLAYER PROFILE CARD (top corner). This is their rating without temporary boosts.
+- If you only see ONE of these views for a player, set BOTH "ovr" and "baseOVR" to that same number.
+- If you see BOTH views for the same player, "ovr" should come from the depth chart and "baseOVR" should come from the profile card — these may legitimately differ (e.g. depth chart shows 89, profile card shows 88 — extract ovr:"89", baseOVR:"88").
+- "startingOVR" should equal "baseOVR" (same value) since this is a fresh roster entry — the user can edit startingOVR later if needed.
+- Ignore arrow colors/styling themselves; just read the numeric values as displayed in each location.
 
 For phone photos: work through glare, angles, moiré patterns. Make best inference for partially visible values.
 
@@ -389,7 +395,7 @@ Return ONLY a valid JSON array, nothing else, no markdown:
       const jsonMatch = raw.match(/\[[\s\S]*\]/);
       if (!jsonMatch) throw new Error("Could not parse response: "+raw.slice(0,200));
       const players = JSON.parse(jsonMatch[0]);
-      const mapped = players.map(p=>({ id:uid(), pos:p.pos||"QB", name:p.name||"", class:p.class||"FR", redshirt:p.redshirt==="true", devTrait:p.devTrait||"Normal", stars:p.stars||"4 Star", gemBust:p.gemBust||"Normal", baseOVR:p.ovr||"", ovr:p.ovr||"", arch:p.arch||"", skillCaps:"", origin:p.origin||"Recruit", nilDeal:"", nilDemand:"", dealbreaker:"", portalRisk:false, draftRisk:false, startingOVR:p.ovr||"", notes:"" }));
+      const mapped = players.map(p=>({ id:uid(), pos:p.pos||"QB", name:p.name||"", class:p.class||"FR", redshirt:p.redshirt==="true", devTrait:p.devTrait||"Normal", stars:p.stars||"4 Star", gemBust:p.gemBust||"Normal", baseOVR:p.baseOVR||p.ovr||"", ovr:p.ovr||"", arch:p.arch||"", skillCaps:"", origin:p.origin||"Recruit", nilDeal:"", nilDemand:"", dealbreaker:"", portalRisk:false, draftRisk:false, startingOVR:p.startingOVR||p.baseOVR||p.ovr||"", notes:"" }));
       setScanned(mapped);
       const sel={}; mapped.forEach(p=>{sel[p.id]=true;}); setSelected(sel); setConfirmed({});
     } catch(err) { setError("Scan failed: "+(err.message||"Unknown error")); }
@@ -582,7 +588,6 @@ export default function App() {
       setSaveError("");
     } catch(e) {
       console.error("Save error", e);
-}
   }, [user, tabOrder]);
 
   const showFlash = useCallback((msg) => { setFlash(msg); setTimeout(()=>setFlash(""),2500); }, []);
