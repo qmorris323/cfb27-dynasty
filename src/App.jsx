@@ -588,7 +588,8 @@ export default function App() {
       setSaveError("");
     } catch(e) {
       console.error("Save error", e);
-  }, [user, tabOrder]);
+  }
+}, [user, tabOrder]);
 
   const showFlash = useCallback((msg) => { setFlash(msg); setTimeout(()=>setFlash(""),2500); }, []);
 
