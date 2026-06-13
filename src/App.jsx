@@ -352,19 +352,107 @@ function ScreenshotScanner({ onAddPlayers }) {
   const [selected, setSelected] = useState({});
   const [confirmed, setConfirmed] = useState({});
   const [error, setError] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [extractProgress, setExtractProgress] = useState({ done: 0, total: 0 });
 
   const handleFiles = (files) => { const imgs=Array.from(files).filter(f=>f.type.startsWith("image/")); if(!imgs.length)return; setImages(prev=>[...prev,...imgs]); setError(""); };
+
+  // Extract frames from a video file, skipping near-duplicate consecutive frames
+  const handleVideoFile = async (file) => {
+    setExtracting(true); setError(""); setExtractProgress({ done: 0, total: 0 });
+    try {
+      const video = document.createElement("video");
+      video.preload = "auto";
+      video.muted = true;
+      video.src = URL.createObjectURL(file);
+      await new Promise((res, rej) => {
+        video.onloadedmetadata = () => res();
+        video.onerror = () => rej(new Error("Could not read video file"));
+      });
+
+      const duration = video.duration;
+      const intervalSec = 1; // sample 1 frame per second
+      const timestamps = [];
+      for (let t = 0.3; t < duration; t += intervalSec) timestamps.push(t);
+      setExtractProgress({ done: 0, total: timestamps.length });
+
+      const canvas = document.createElement("canvas");
+      const SAMPLE_W = 320, SAMPLE_H = 180; // small canvas for diffing
+      canvas.width = SAMPLE_W; canvas.height = SAMPLE_H;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+      const fullCanvas = document.createElement("canvas");
+      fullCanvas.width = video.videoWidth; fullCanvas.height = video.videoHeight;
+      const fullCtx = fullCanvas.getContext("2d");
+
+      const seekTo = (t) => new Promise((res) => {
+        const onSeeked = () => { video.removeEventListener("seeked", onSeeked); res(); };
+        video.addEventListener("seeked", onSeeked);
+        video.currentTime = t;
+      });
+
+      let prevSample = null;
+      const keptFrames = [];
+      const DIFF_THRESHOLD = 18; // average per-pixel diff (0-255) above which a frame is considered "different enough"
+
+      for (let i = 0; i < timestamps.length; i++) {
+        await seekTo(timestamps[i]);
+        ctx.drawImage(video, 0, 0, SAMPLE_W, SAMPLE_H);
+        const sample = ctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H).data;
+
+        let isDifferent = true;
+        if (prevSample) {
+          let diffSum = 0;
+          for (let p = 0; p < sample.length; p += 4) {
+            diffSum += Math.abs(sample[p] - prevSample[p]) + Math.abs(sample[p+1] - prevSample[p+1]) + Math.abs(sample[p+2] - prevSample[p+2]);
+          }
+          const avgDiff = diffSum / (sample.length / 4 * 3);
+          isDifferent = avgDiff > DIFF_THRESHOLD;
+        }
+
+        if (isDifferent) {
+          fullCtx.drawImage(video, 0, 0, fullCanvas.width, fullCanvas.height);
+          const blob = await new Promise(r => fullCanvas.toBlob(r, "image/jpeg", 0.85));
+          const f = new File([blob], `frame_${i}.jpg`, { type: "image/jpeg" });
+          keptFrames.push(f);
+          prevSample = sample;
+        }
+        setExtractProgress({ done: i+1, total: timestamps.length });
+      }
+
+      URL.revokeObjectURL(video.src);
+
+      if (keptFrames.length === 0) {
+        setError("No distinct frames found in video — try a different recording.");
+      } else {
+        setImages(prev => [...prev, ...keptFrames]);
+      }
+    } catch (e) {
+      setError("Video processing failed: " + e.message);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleVideoInput = (files) => {
+    const vid = Array.from(files).find(f => f.type.startsWith("video/"));
+    if (vid) handleVideoFile(vid);
+  };
+
+  const [scanProgress, setScanProgress] = useState({ done: 0, total: 0 });
+  const BATCH_SIZE = 8;
 
   const scanAll = async () => {
     if (!images.length) return;
     setScanning(true); setError(""); setScanned([]);
+    setScanProgress({ done: 0, total: Math.ceil(images.length / BATCH_SIZE) });
     try {
-      const imageContents = await Promise.all(images.map(async img => { const b64=await compressImage(img); return {type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}}; }));
       const systemPrompt = `You are an expert data extractor for EA Sports College Football 27 (CFB 27) on PS5. Extract every visible player's data from the images provided — these may be native PS5 screenshots or phone photos of a TV screen.
 
 Screen types:
-- Depth Chart/Roster List: shows multiple players. Extract name, pos, OVR, class. Leave other fields empty.
-- Player Profile Card: shows one player's full details. Extract everything visible including dev trait, stars, archetype, starting OVR, skill caps, dealbreaker, NIL values, portal/draft indicators.
+- Depth Chart/Roster List: shows multiple players in a table on the left, with one player's small profile card on the right (name, corner OVR badge, archetype, class, dev trait). Extract name, pos, OVR, class from the table rows; if the right-side card matches one of those players, also use it for baseOVR/archetype/devTrait/etc as described below.
+- Player Overview Screen: a full-screen detail view for ONE player, showing a large "## OVR" badge + full name at top, then "Position", "Archetype", "Class", "Star Rating" (count the filled star icons), "Height/Weight", "Pipeline", "Hometown", and at the bottom "Development Trait" and "Dealbreaker" (with category label and a colored letter-grade box). THIS IS THE BEST/MOST RELIABLE SOURCE — when this screen type is present for a player, prefer ALL of its values (ovr, baseOVR, stars, archetype, devTrait, dealbreaker, dealbreakerCategory, class) over any other screen showing the same player.
+- Player Profile Card (smaller card, e.g. on a depth chart): shows one player's details in a compact card. Extract dev trait, stars, archetype, dealbreaker, NIL values, portal/draft indicators if visible.
 
 IMPORTANT — Class field format: The YEAR column often shows "JR (RS)", "SR (RS)", "FR (RS)" etc. The "(RS)" suffix means the player is REDSHIRTED.
 - The "class" field must contain ONLY the base class: "FR", "SO", "JR", or "SR" — never include "(RS)" in this field.
@@ -383,7 +471,10 @@ IMPORTANT — Dealbreaker fields: A player's expanded profile/details may show a
 
 IMPORTANT — Star Rating: Star ratings are shown as a row of star icons (filled vs unfilled/outline stars), typically 1-5 stars total, often near the player's recruiting info or class. COUNT THE FILLED STARS to determine the rating (e.g. 4 filled + 1 outline = "4 Star"). Look carefully at BOTH the depth chart row AND the profile card — if either shows a star rating, use it. Do not default to a low star count; carefully count the filled stars.
 
-CRITICAL — baseOVR vs ovr, re-stated: when a profile card is present, its large corner OVR number (e.g. "88") is the "baseOVR" value — this is very likely DIFFERENT from the depth chart's "ovr" value (e.g. "89"). These two numbers commonly differ by 1-3 points. Double-check you have NOT used the same number for both "ovr" and "baseOVR" when a profile card is visible — if you find yourself about to output identical ovr and baseOVR values while a profile card is present in the images, re-examine the profile card's corner OVR badge specifically for the baseOVR value.
+CRITICAL — baseOVR vs ovr:
+- If a Player Overview Screen is present for this player, its single "## OVR" badge is the source of truth for BOTH "ovr" and "baseOVR" (set both to this same value) — this screen represents the player's current true rating, no separate "current vs baseline" split applies here.
+- If instead you have a depth chart row AND a separate small profile card (not the full Overview Screen) for the same player, these may show two different numbers — the depth chart's number is "ovr" (current, possibly boosted) and the small card's corner badge is "baseOVR" (baseline). These commonly differ by 1-3 points; do not collapse them to the same value in that case.
+- If you only have a depth chart row with no card/overview at all, set both "ovr" and "baseOVR" to that row's number.
 
 For phone photos: work through glare, angles, moiré patterns. Make best inference for partially visible values.
 
@@ -393,21 +484,50 @@ If same player appears in multiple images, merge data — profile card values ta
 Return ONLY a valid JSON array, nothing else, no markdown:
 [{"pos":"QB","name":"Player Name","class":"JR","ovr":"87","devTrait":"Star","stars":"4 Star","arch":"Pocket Passer","gemBust":"Normal","origin":"Recruit","redshirt":"false","baseOVR":"87","startingOVR":"87","skillCaps":"","nilDeal":"","nilDemand":"","dealbreaker":"","dealbreakerCategory":"","portalRisk":"false","draftRisk":"false","notes":""}]`;
 
-      const response = await fetch("/api/scan", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:8000, system:systemPrompt, messages:[{role:"user",content:[...imageContents,{type:"text",text:"Extract all players. Return only the JSON array."}]}] })
-      });
-      const data = await response.json();
-      if (!response.ok||data.error) throw new Error("API: "+(data.error?.message||JSON.stringify(data).slice(0,300)));
-      const raw = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
-      if (!raw) throw new Error("Empty response from API");
-      const jsonMatch = raw.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) throw new Error("Could not parse response: "+raw.slice(0,200));
-      const players = JSON.parse(jsonMatch[0]);
-      const mapped = players.map(p=>({ id:uid(), pos:p.pos||"QB", name:p.name||"", class:p.class||"FR", redshirt:p.redshirt==="true", devTrait:p.devTrait||"Normal", stars:p.stars||"4 Star", gemBust:p.gemBust||"Normal", baseOVR:p.baseOVR||p.ovr||"", ovr:p.ovr||"", arch:p.arch||"", skillCaps:"", origin:p.origin||"Recruit", nilDeal:"", nilDemand:"", dealbreaker:p.dealbreaker||"", dealbreakerCategory:p.dealbreakerCategory||"", portalRisk:false, draftRisk:false, startingOVR:p.startingOVR||p.baseOVR||p.ovr||"", notes:"" }));
-      setScanned(mapped);
-      const sel={}; mapped.forEach(p=>{sel[p.id]=true;}); setSelected(sel); setConfirmed({});
+      const allMapped = [];
+      const batches = [];
+      for (let i = 0; i < images.length; i += BATCH_SIZE) batches.push(images.slice(i, i + BATCH_SIZE));
+
+      for (let b = 0; b < batches.length; b++) {
+        const batchImages = batches[b];
+        const imageContents = await Promise.all(batchImages.map(async img => { const b64=await compressImage(img); return {type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}}; }));
+
+        const response = await fetch("/api/scan", {
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:8000, system:systemPrompt, messages:[{role:"user",content:[...imageContents,{type:"text",text:"Extract all players. Return only the JSON array."}]}] })
+        });
+        const data = await response.json();
+        if (!response.ok||data.error) throw new Error("API: "+(data.error?.message||JSON.stringify(data).slice(0,300)));
+        const raw = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+        if (!raw) throw new Error("Empty response from API");
+        const jsonMatch = raw.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) throw new Error("Could not parse response: "+raw.slice(0,200));
+        const players = JSON.parse(jsonMatch[0]);
+        const mapped = players.map(p=>({ id:uid(), pos:p.pos||"QB", name:p.name||"", class:p.class||"FR", redshirt:p.redshirt==="true", devTrait:p.devTrait||"Normal", stars:p.stars||"4 Star", gemBust:p.gemBust||"Normal", baseOVR:p.baseOVR||p.ovr||"", ovr:p.ovr||"", arch:p.arch||"", skillCaps:"", origin:p.origin||"Recruit", nilDeal:"", nilDemand:"", dealbreaker:p.dealbreaker||"", dealbreakerCategory:p.dealbreakerCategory||"", portalRisk:false, draftRisk:false, startingOVR:p.startingOVR||p.baseOVR||p.ovr||"", notes:"" }));
+
+        // Merge into allMapped, combining duplicates within this scan session by name+pos
+        mapped.forEach(p => {
+          const existingIdx = allMapped.findIndex(e => isSamePlayer(e, p));
+          if (existingIdx !== -1) {
+            const existing = allMapped[existingIdx];
+            const merged = { ...existing };
+            Object.entries(p).forEach(([k,v]) => {
+              if (k==="id") return;
+              if (v!==""&&v!==null&&v!==undefined&&!(typeof v==="boolean"&&v===false)) merged[k]=v;
+            });
+            if (p.name && p.name.length > (existing.name||"").length) merged.name = p.name;
+            allMapped[existingIdx] = merged;
+          } else {
+            allMapped.push(p);
+          }
+        });
+
+        setScanProgress({ done: b+1, total: batches.length });
+      }
+
+      setScanned(allMapped);
+      const sel={}; allMapped.forEach(p=>{sel[p.id]=true;}); setSelected(sel); setConfirmed({});
     } catch(err) { setError("Scan failed: "+(err.message||"Unknown error")); }
     finally { setScanning(false); }
   };
@@ -426,23 +546,31 @@ Return ONLY a valid JSON array, nothing else, no markdown:
       <div style={{ background:"#0a1628", border:"1px solid #1e3a5f", borderRadius:8, padding:16, marginBottom:16 }}>
         <div style={{ fontWeight:700, color:"#60a5fa", marginBottom:8, fontSize:14 }}>📸 How to use the Scanner</div>
         <div style={{ color:"#94a3b8", fontSize:12, lineHeight:1.8 }}>
-          <strong style={{color:"#f1f5f9"}}>Option A — Phone photo:</strong> Point your phone at the TV and snap a photo of any screen.<br/>
-          <strong style={{color:"#f1f5f9"}}>Option B — PS5 screenshot:</strong> Press Share → Take Screenshot, transfer via PS App or USB.<br/>
-          <strong style={{color:"#f1f5f9"}}>Best results:</strong> Depth chart = fast bulk load. <strong style={{color:"#f1f5f9"}}>Profile card</strong> = full details (dev trait, stars, archetype, etc).<br/>
-          <span style={{color:"#64748b"}}>💡 Mix depth chart + profile card photos in one scan — data merges automatically.</span>
+          <strong style={{color:"#f1f5f9"}}>Option A — Video (recommended):</strong> Screen-record yourself scrolling through each player's Overview page (shows OVR, name, archetype, stars, dev trait, dealbreaker all at once). Upload the video and frames are extracted automatically.<br/>
+          <strong style={{color:"#f1f5f9"}}>Option B — Photos:</strong> Phone photos of the TV or PS5 screenshots — depth chart for fast bulk load, profile/overview card for full details.<br/>
+          <span style={{color:"#64748b"}}>💡 Mix videos and photos in one scan — data merges automatically with your existing roster by name + position.</span>
         </div>
       </div>
-      <div onClick={()=>document.getElementById("ss-input").click()} onDrop={e=>{e.preventDefault();handleFiles(e.dataTransfer.files);}} onDragOver={e=>e.preventDefault()}
+      <div onClick={()=>document.getElementById("ss-input").click()} onDrop={e=>{e.preventDefault();handleFiles(e.dataTransfer.files);handleVideoInput(e.dataTransfer.files);}} onDragOver={e=>e.preventDefault()}
         style={{ border:"2px dashed #334155", borderRadius:10, padding:"32px 20px", textAlign:"center", cursor:"pointer", marginBottom:16, background:images.length?"#0a1628":"#070c18" }}
         onMouseEnter={e=>e.currentTarget.style.borderColor="#3b82f6"} onMouseLeave={e=>e.currentTarget.style.borderColor="#334155"}>
-        <input id="ss-input" type="file" accept="image/*" multiple style={{display:"none"}} onChange={e=>handleFiles(e.target.files)} />
-        <div style={{ fontSize:32, marginBottom:8 }}>🖼</div>
-        <div style={{ color:"#60a5fa", fontWeight:600, marginBottom:4 }}>Drop screenshots or phone photos here</div>
-        <div style={{ color:"#475569", fontSize:12 }}>or tap to browse · PNG, JPG accepted · multiple files OK</div>
+        <input id="ss-input" type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={e=>{handleFiles(e.target.files);handleVideoInput(e.target.files);}} />
+        <div style={{ fontSize:32, marginBottom:8 }}>🖼 🎥</div>
+        <div style={{ color:"#60a5fa", fontWeight:600, marginBottom:4 }}>Drop screenshots, photos, or a screen recording here</div>
+        <div style={{ color:"#475569", fontSize:12 }}>or tap to browse · images or video · multiple files OK</div>
       </div>
+      {extracting&&(
+        <div style={{ background:"#0a1628", border:"1px solid #1e3a5f", borderRadius:8, padding:16, marginBottom:16 }}>
+          <div style={{ color:"#60a5fa", fontWeight:600, marginBottom:8 }}>🎬 Extracting frames from video…</div>
+          <div style={{ background:"#1e293b", height:6, borderRadius:3 }}>
+            <div style={{ width: extractProgress.total ? `${extractProgress.done/extractProgress.total*100}%` : "0%", background:"#3b82f6", height:6, borderRadius:3, transition:"width .2s" }} />
+          </div>
+          <div style={{ color:"#475569", fontSize:11, marginTop:6 }}>{extractProgress.done} / {extractProgress.total} seconds processed — keeping only distinct frames</div>
+        </div>
+      )}
       {images.length>0&&(<div style={{ display:"flex", gap:10, flexWrap:"wrap", marginBottom:16 }}>{images.map((img,i)=>(<div key={i} style={{ position:"relative" }}><img src={URL.createObjectURL(img)} alt="" style={{ height:80, borderRadius:6, border:"1px solid #334155" }} /><button onClick={()=>setImages(prev=>prev.filter((_,j)=>j!==i))} style={{ position:"absolute", top:-6, right:-6, background:"#ef4444", border:"none", color:"#fff", borderRadius:"50%", width:18, height:18, cursor:"pointer", fontSize:11, lineHeight:"18px", padding:0 }}>✕</button></div>))}</div>)}
       {images.length>0&&!scanning&&scanned.length===0&&(<button onClick={scanAll} style={{ background:"#3b82f6", color:"#fff", border:"none", borderRadius:7, padding:"10px 24px", cursor:"pointer", fontWeight:700, fontSize:14, marginBottom:16 }}>🔍 Scan {images.length} Image{images.length>1?"s":""}</button>)}
-      {scanning&&(<div style={{ background:"#0a1628", border:"1px solid #1e3a5f", borderRadius:8, padding:20, textAlign:"center", marginBottom:16 }}><div style={{ fontSize:24, marginBottom:8 }}>⚡</div><div style={{ color:"#60a5fa", fontWeight:600 }}>Reading player data…</div><div style={{ color:"#475569", fontSize:12, marginTop:4 }}>Usually 5–15 seconds</div></div>)}
+      {scanning&&(<div style={{ background:"#0a1628", border:"1px solid #1e3a5f", borderRadius:8, padding:20, textAlign:"center", marginBottom:16 }}><div style={{ fontSize:24, marginBottom:8 }}>⚡</div><div style={{ color:"#60a5fa", fontWeight:600 }}>Reading player data…</div><div style={{ color:"#475569", fontSize:12, marginTop:4 }}>{scanProgress.total>1?`Batch ${scanProgress.done}/${scanProgress.total}`:"Usually 5–15 seconds"}</div>{scanProgress.total>1&&<div style={{ background:"#1e293b", height:6, borderRadius:3, marginTop:10 }}><div style={{ width:`${scanProgress.done/scanProgress.total*100}%`, background:"#3b82f6", height:6, borderRadius:3, transition:"width .3s" }} /></div>}</div>)}
       {error&&<div style={{ background:"#1a0a0a", border:"1px solid #7f1d1d", borderRadius:8, padding:12, marginBottom:16, color:"#fca5a5", fontSize:12 }}>{error}</div>}
       {scanned.length>0&&(
         <div>
