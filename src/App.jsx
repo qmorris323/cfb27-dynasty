@@ -53,6 +53,26 @@ const uid = () => String(++_id);
 const advanceClass = c => ({FR:"SO",SO:"JR",JR:"SR",SR:"Graduate"}[c]||c);
 const ovrChange = p => { const b=Number(p.baseOVR),c=Number(p.ovr); return (b&&c)?c-b:null; };
 const nilAtRisk = p => { const d=Number(p.nilDeal),dm=Number(p.nilDemand); return d>0&&dm>0&&dm>d; };
+
+// Normalize a name for fuzzy matching: lowercase, strip punctuation, take last token (surname) + first initial
+const normName = (name) => (name||"").toLowerCase().replace(/[^a-z\s]/g,"").trim();
+const nameKey = (name) => {
+  const parts = normName(name).split(/\s+/).filter(Boolean);
+  if (!parts.length) return "";
+  const last = parts[parts.length-1];
+  const first = parts.length > 1 ? parts[0][0] : "";
+  return `${first}${last}`; // e.g. "t" + "stewart" = "tstewart"
+};
+const isSamePlayer = (a, b) => {
+  if ((a.pos||"") !== (b.pos||"")) return false;
+  const ka = nameKey(a.name), kb = nameKey(b.name);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  // also match if one full surname matches and other is just surname-only
+  const aLast = normName(a.name).split(/\s+/).pop();
+  const bLast = normName(b.name).split(/\s+/).pop();
+  return aLast === bLast && aLast.length > 2;
+};
 const toBase64 = file => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=()=>rej(new Error("Read failed")); r.readAsDataURL(file); });
 
 // Compress/resize image to keep payload small enough for serverless function limits
@@ -605,8 +625,35 @@ export default function App() {
   }, [roster, alumni, program, season, teamName, saveToSupabase, showFlash]);
 
   const addPlayers = useCallback((ps) => {
-    const newRoster = [...roster, ...ps.map(p=>({...p,id:p.id||uid()}))];
-    setRoster(newRoster); showFlash(`${ps.length} player${ps.length!==1?"s":""} added ✓`);
+    let newRoster = [...roster];
+    let mergedCount = 0, addedCount = 0;
+
+    ps.forEach(p => {
+      const existingIdx = newRoster.findIndex(r => isSamePlayer(r, p));
+      if (existingIdx !== -1) {
+        // Merge: incoming non-empty/non-false values overwrite, empty incoming values keep existing
+        const existing = newRoster[existingIdx];
+        const merged = { ...existing };
+        Object.entries(p).forEach(([k,v]) => {
+          if (k==="id") return;
+          if (v!==""&&v!==null&&v!==undefined&&!(typeof v==="boolean"&&v===false)) merged[k]=v;
+        });
+        // Prefer the longer/fuller name (e.g. "Terion Stewart" over "T. Stewart")
+        if (p.name && p.name.length > (existing.name||"").length) merged.name = p.name;
+        else merged.name = existing.name || p.name;
+        newRoster[existingIdx] = merged;
+        mergedCount++;
+      } else {
+        newRoster.push({ ...p, id: uid() });
+        addedCount++;
+      }
+    });
+
+    setRoster(newRoster);
+    const parts = [];
+    if (addedCount) parts.push(`${addedCount} added`);
+    if (mergedCount) parts.push(`${mergedCount} merged with existing`);
+    showFlash(parts.join(", ") + " ✓");
     saveToSupabase(newRoster, alumni, program, season, teamName);
   }, [roster, alumni, program, season, teamName, saveToSupabase, showFlash]);
 
