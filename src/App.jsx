@@ -13,23 +13,6 @@ const DEALBREAKERS = ["A","A-","B+","B","B-","C+","C","C-","D+","D","D-"];
 const DEALBREAKER_CATEGORIES = ["Playing Style","Playing Time","Coach Prestige","Conference Prestige","Pro Potential","Loyalty","Tradition","Athletic Facilities","Academic Prestige","Brand Exposure","Stability"];
 const SPEND_CATEGORIES = ["NIL","Facilities","Staff","Equipment","Other"];
 const AD_STATUSES = ["On Track","At Risk","Met","Failed"];
-const ARCHETYPES = {
-  QB:["Scrambler","Pocket Passer","Strong Arm","Field General"],
-  HB:["Elusive Back","Power Back","Receiving Back"],
-  FB:["Blocking Back","Receiving Back"],
-  WR:["Deep Threat","Slot","Physical","Route Runner"],
-  TE:["Vertical Threat","Blocking","Hybrid"],
-  OT:["Agile","Power"], OG:["Agile","Power"],
-  C:["Agile","Pass Protector","Power"],
-  DE:["Speed Rusher","Power Rusher"],
-  DT:["Run Stopper","Power Rusher","Pass Rusher"],
-  OLB:["Speed Rusher","Power Rusher","Pass Coverage"],
-  MLB:["Run Stopper","Pass Coverage","Field General"],
-  CB:["Slot","Zone","Man To Man"],
-  FS:["Hybrid","Zone","Run Support"],
-  SS:["Hybrid","Run Support","Zone"],
-  K:["Accurate","Power"], P:["Accurate","Power"],
-};
 const CLASS_ORDER = { FR:0, SO:1, JR:2, SR:3, Graduate:4 };
 const DEV_COLOR = { Elite:"#f59e0b", Star:"#60a5fa", Impact:"#34d399", Normal:"#94a3b8" };
 const STAR_COLOR = { "5 Star":"#f59e0b","4 Star":"#60a5fa","3 Star":"#94a3b8","2 Star":"#78716c","1 Star":"#6b7280" };
@@ -203,7 +186,7 @@ function PlayerForm({ initial, onSave, onCancel }) {
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))", gap:10 }}>
         {[["Position","pos","sel",POSITIONS],["Name","name","txt"],["Class","class","sel",CLASSES],
           ["Dev Trait","devTrait","sel",DEV_TRAITS],["Stars","stars","sel",STAR_LEVELS],["GEM/Bust","gemBust","sel",GEM_BUST],
-          ["Archetype","arch","sel",ARCHETYPES[p.pos]||[]],["Origin","origin","sel",ORIGINS],
+          ["Archetype","arch","txt"],["Origin","origin","sel",ORIGINS],
           ["Baseline OVR","baseOVR","num"],["Current OVR","ovr","num"],["Starting OVR","startingOVR","num"],
           ["Skill Caps","skillCaps","num"],["Dealbreaker Grade","dealbreaker","sel",DEALBREAKERS],["Dealbreaker Category","dealbreakerCategory","sel",DEALBREAKER_CATEGORIES],
         ].map(([lbl,key,type,opts])=>(
