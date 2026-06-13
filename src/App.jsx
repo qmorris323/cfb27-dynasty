@@ -371,7 +371,7 @@ function ScreenshotScanner({ onAddPlayers }) {
       });
 
       const duration = video.duration;
-      const intervalSec = 1; // sample 1 frame per second
+      const intervalSec = 0.5; // sample 2 frames per second to catch brief Overview screens
       const timestamps = [];
       for (let t = 0.3; t < duration; t += intervalSec) timestamps.push(t);
       setExtractProgress({ done: 0, total: timestamps.length });
@@ -393,7 +393,7 @@ function ScreenshotScanner({ onAddPlayers }) {
 
       let prevSample = null;
       const keptFrames = [];
-      const DIFF_THRESHOLD = 18; // average per-pixel diff (0-255) above which a frame is considered "different enough"
+      const DIFF_THRESHOLD = 10; // average per-pixel diff threshold; lower = keep more frames (avoids dropping brief Overview screens)
 
       for (let i = 0; i < timestamps.length; i++) {
         await seekTo(timestamps[i]);
@@ -440,7 +440,7 @@ function ScreenshotScanner({ onAddPlayers }) {
   };
 
   const [scanProgress, setScanProgress] = useState({ done: 0, total: 0 });
-  const BATCH_SIZE = 8;
+  const BATCH_SIZE = 18;
 
   const scanAll = async () => {
     if (!images.length) return;
@@ -469,7 +469,7 @@ IMPORTANT — OVR has TWO distinct values you must capture separately:
 
 IMPORTANT — Dealbreaker fields: A player's expanded profile/details may show a "Dealbreaker" section with a letter grade (A, A-, B+, B, B-, C+, C, C-, D+, D, D-) AND a category label describing WHAT the dealbreaker is about (e.g. "Playing Style", "Playing Time", "Coach Prestige", "Conference Prestige", "Pro Potential", "Loyalty", "Tradition", "Athletic Facilities", "Academic Prestige", "Brand Exposure", "Stability"). Extract the letter grade as "dealbreaker" and the category label as "dealbreakerCategory" (use the exact text shown, or your best match to the list above). Before finalizing each player's entry, re-check ALL provided images for one showing that player's "Development Trait:" / "Dealbreaker:" panel (bottom-left of the Overview Screen) — this section is easy to miss but should be captured whenever present. Leave both empty only if truly not visible in any image.
 
-IMPORTANT — Star Rating: Star ratings are shown as a row of star icons (filled vs unfilled/outline stars), typically 1-5 stars total, often near the player's recruiting info or class. COUNT THE FILLED STARS to determine the rating (e.g. 4 filled + 1 outline = "4 Star"). Look carefully at BOTH the depth chart row AND the profile card — if either shows a star rating, use it. Do not default to a low star count; carefully count the filled stars.
+IMPORTANT — Star Rating: Star ratings appear as a row of star icons on the Player Overview Screen, labeled "Star Rating" (filled stars vs empty/outline stars, 1-5 total). COUNT THE FILLED STARS (e.g. 2 filled + 3 outline = "2 Star"; 1 filled + 4 outline = "1 Star"). This label generally appears ONLY on the full Overview Screen, not on depth chart rows or small profile cards. If a player's images do NOT include a clear "Star Rating" star display, leave the "stars" field as an empty string "" — do NOT guess or default to "4 Star". Only output a star value when you can actually see and count the star icons.
 
 CRITICAL — baseOVR vs ovr:
 - If a Player Overview Screen is present for this player, its single "## OVR" badge is the source of truth for BOTH "ovr" and "baseOVR" (set both to this same value) — this screen represents the player's current true rating, no separate "current vs baseline" split applies here.
@@ -488,7 +488,11 @@ Return ONLY a valid JSON array, nothing else, no markdown:
 
       const allMapped = [];
       const batches = [];
-      for (let i = 0; i < images.length; i += BATCH_SIZE) batches.push(images.slice(i, i + BATCH_SIZE));
+      const OVERLAP = 2;
+      for (let i = 0; i < images.length; i += (BATCH_SIZE - OVERLAP)) {
+        batches.push(images.slice(i, i + BATCH_SIZE));
+        if (i + BATCH_SIZE >= images.length) break;
+      }
 
       for (let b = 0; b < batches.length; b++) {
         const batchImages = batches[b];
@@ -506,7 +510,7 @@ Return ONLY a valid JSON array, nothing else, no markdown:
         const jsonMatch = raw.match(/\[[\s\S]*\]/);
         if (!jsonMatch) throw new Error("Could not parse response: "+raw.slice(0,200));
         const players = JSON.parse(jsonMatch[0]);
-        const mapped = players.map(p=>({ id:uid(), pos:p.pos||"QB", name:p.name||"", class:p.class||"FR", redshirt:p.redshirt==="true", devTrait:p.devTrait||"Normal", stars:p.stars||"4 Star", gemBust:p.gemBust||"Normal", baseOVR:p.baseOVR||p.ovr||"", ovr:p.ovr||"", arch:p.arch||"", skillCaps:"", origin:p.origin||"Recruit", nilDeal:"", nilDemand:"", dealbreaker:p.dealbreaker||"", dealbreakerCategory:p.dealbreakerCategory||"", portalRisk:false, draftRisk:false, startingOVR:p.startingOVR||p.baseOVR||p.ovr||"", notes:"" }));
+        const mapped = players.map(p=>({ id:uid(), pos:p.pos||"QB", name:p.name||"", class:p.class||"FR", redshirt:p.redshirt==="true", devTrait:p.devTrait||"Normal", stars:p.stars||"", gemBust:p.gemBust||"Normal", baseOVR:p.baseOVR||p.ovr||"", ovr:p.ovr||"", arch:p.arch||"", skillCaps:"", origin:p.origin||"Recruit", nilDeal:"", nilDemand:"", dealbreaker:p.dealbreaker||"", dealbreakerCategory:p.dealbreakerCategory||"", portalRisk:false, draftRisk:false, startingOVR:p.startingOVR||p.baseOVR||p.ovr||"", notes:"" }));
 
         // Merge into allMapped, combining duplicates within this scan session by name+pos
         mapped.forEach(p => {
@@ -528,6 +532,7 @@ Return ONLY a valid JSON array, nothing else, no markdown:
         setScanProgress({ done: b+1, total: batches.length });
       }
 
+      allMapped.forEach(p => { if (!p.stars) p.stars = "4 Star"; });
       setScanned(allMapped);
       const sel={}; allMapped.forEach(p=>{sel[p.id]=true;}); setSelected(sel); setConfirmed({});
     } catch(err) { setError("Scan failed: "+(err.message||"Unknown error")); }
