@@ -381,6 +381,10 @@ IMPORTANT — OVR has TWO distinct values you must capture separately:
 
 IMPORTANT — Dealbreaker fields: A player's expanded profile/details may show a "Dealbreaker" section with a letter grade (A, A-, B+, B, B-, C+, C, C-, D+, D, D-) AND a category label describing WHAT the dealbreaker is about (e.g. "Playing Style", "Playing Time", "Coach Prestige", "Conference Prestige", "Pro Potential", "Loyalty", "Tradition", "Athletic Facilities", "Academic Prestige", "Brand Exposure", "Stability"). Extract the letter grade as "dealbreaker" and the category label as "dealbreakerCategory" (use the exact text shown, or your best match to the list above). Leave both empty if not visible.
 
+IMPORTANT — Star Rating: Star ratings are shown as a row of star icons (filled vs unfilled/outline stars), typically 1-5 stars total, often near the player's recruiting info or class. COUNT THE FILLED STARS to determine the rating (e.g. 4 filled + 1 outline = "4 Star"). Look carefully at BOTH the depth chart row AND the profile card — if either shows a star rating, use it. Do not default to a low star count; carefully count the filled stars.
+
+CRITICAL — baseOVR vs ovr, re-stated: when a profile card is present, its large corner OVR number (e.g. "88") is the "baseOVR" value — this is very likely DIFFERENT from the depth chart's "ovr" value (e.g. "89"). These two numbers commonly differ by 1-3 points. Double-check you have NOT used the same number for both "ovr" and "baseOVR" when a profile card is visible — if you find yourself about to output identical ovr and baseOVR values while a profile card is present in the images, re-examine the profile card's corner OVR badge specifically for the baseOVR value.
+
 For phone photos: work through glare, angles, moiré patterns. Make best inference for partially visible values.
 
 Dev Trait: X-Factor=Elite, Superstar=Star, Impact=Impact, Normal=Normal
