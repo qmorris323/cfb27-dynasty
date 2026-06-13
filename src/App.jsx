@@ -467,7 +467,7 @@ IMPORTANT — OVR has TWO distinct values you must capture separately:
 - "startingOVR" should equal "baseOVR" (same value) since this is a fresh roster entry — the user can edit startingOVR later if needed.
 - Ignore arrow colors/styling themselves; just read the numeric values as displayed in each location.
 
-IMPORTANT — Dealbreaker fields: A player's expanded profile/details may show a "Dealbreaker" section with a letter grade (A, A-, B+, B, B-, C+, C, C-, D+, D, D-) AND a category label describing WHAT the dealbreaker is about (e.g. "Playing Style", "Playing Time", "Coach Prestige", "Conference Prestige", "Pro Potential", "Loyalty", "Tradition", "Athletic Facilities", "Academic Prestige", "Brand Exposure", "Stability"). Extract the letter grade as "dealbreaker" and the category label as "dealbreakerCategory" (use the exact text shown, or your best match to the list above). Leave both empty if not visible.
+IMPORTANT — Dealbreaker fields: A player's expanded profile/details may show a "Dealbreaker" section with a letter grade (A, A-, B+, B, B-, C+, C, C-, D+, D, D-) AND a category label describing WHAT the dealbreaker is about (e.g. "Playing Style", "Playing Time", "Coach Prestige", "Conference Prestige", "Pro Potential", "Loyalty", "Tradition", "Athletic Facilities", "Academic Prestige", "Brand Exposure", "Stability"). Extract the letter grade as "dealbreaker" and the category label as "dealbreakerCategory" (use the exact text shown, or your best match to the list above). Before finalizing each player's entry, re-check ALL provided images for one showing that player's "Development Trait:" / "Dealbreaker:" panel (bottom-left of the Overview Screen) — this section is easy to miss but should be captured whenever present. Leave both empty only if truly not visible in any image.
 
 IMPORTANT — Star Rating: Star ratings are shown as a row of star icons (filled vs unfilled/outline stars), typically 1-5 stars total, often near the player's recruiting info or class. COUNT THE FILLED STARS to determine the rating (e.g. 4 filled + 1 outline = "4 Star"). Look carefully at BOTH the depth chart row AND the profile card — if either shows a star rating, use it. Do not default to a low star count; carefully count the filled stars.
 
@@ -479,7 +479,9 @@ CRITICAL — baseOVR vs ovr:
 For phone photos: work through glare, angles, moiré patterns. Make best inference for partially visible values.
 
 Dev Trait: X-Factor=Elite, Superstar=Star, Impact=Impact, Normal=Normal
-If same player appears in multiple images, merge data — profile card values take priority.
+If same player appears in multiple images, merge data — profile card / Overview Screen values take priority.
+
+CRITICAL — Name field: Depth chart rows show abbreviated names like "T.Stewart" (first initial + surname). The Player Overview Screen and Profile Cards show the FULL name (e.g. "Terion Stewart" or "TERION" / "STEWART" as separate lines). ALWAYS output the FULL name in the "name" field when ANY image shows it — never output an abbreviated "T.Stewart" style name if the full first name is visible anywhere in the provided images for that player.
 
 Return ONLY a valid JSON array, nothing else, no markdown:
 [{"pos":"QB","name":"Player Name","class":"JR","ovr":"87","devTrait":"Star","stars":"4 Star","arch":"Pocket Passer","gemBust":"Normal","origin":"Recruit","redshirt":"false","baseOVR":"87","startingOVR":"87","skillCaps":"","nilDeal":"","nilDemand":"","dealbreaker":"","dealbreakerCategory":"","portalRisk":"false","draftRisk":"false","notes":""}]`;
